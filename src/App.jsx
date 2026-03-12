@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 
 const QUESTIONS = [
   // SECTION 1: INVESTMENTS
@@ -184,14 +184,17 @@ function QuestionCard({ question, userAnswer, onAnswer, showResult, questionNum,
   const headerColor = showResult ? "#fff" : "#2D3B45";
 
   return (
-    <div style={{border:`1px solid ${borderColor}`, borderRadius:4, marginBottom:24, borderLeft:`3px solid ${borderColor}`, background:"#fff", boxShadow:"0 1px 3px rgba(0,0,0,0.08)"}}>
-      {showResult && (
-        <div style={{background:isCorrect?"#0B874B":"#D93025", color:"#fff", fontSize:13, fontWeight:600, padding:"4px 12px", display:"inline-block", borderRadius:"0 0 4px 0"}}>{isCorrect?"Correct answer":"Incorrect"}</div>
-      )}
-      <div style={{background:headerBg, padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center", borderBottom:`1px solid ${borderColor}`}}>
-        <span style={{fontWeight:700, fontSize:16, color:headerColor}}>Question {questionNum}</span>
-        <span style={{fontSize:14, color:headerColor, opacity:0.8}}>{question.pts} / {question.pts} pts</span>
+    <div style={{marginBottom:24}}>
+      <div style={{height:28, marginBottom:6, display:"flex", alignItems:"center"}}>
+        {showResult && (
+          <div style={{background:isCorrect?"#0B874B":"#D93025", color:"#fff", fontSize:13, fontWeight:600, padding:"4px 12px", borderRadius:4}}>{isCorrect?"Correct answer":"Incorrect"}</div>
+        )}
       </div>
+      <div style={{border:`1px solid ${borderColor}`, borderRadius:4, borderLeft:`3px solid ${borderColor}`, background:"#fff", boxShadow:"0 1px 3px rgba(0,0,0,0.08)"}}>
+        <div style={{background:headerBg, padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center", borderBottom:`1px solid ${borderColor}`}}>
+          <span style={{fontWeight:700, fontSize:16, color:headerColor}}>Question {questionNum}</span>
+          <span style={{fontSize:14, color:headerColor, opacity:0.8}}>{question.pts} / {question.pts} pts</span>
+        </div>
       <div style={{padding:"20px 24px"}}>
         <div style={{fontSize:15, lineHeight:1.6, color:"#2D3B45", whiteSpace:"pre-line", marginBottom:20}}>{q}</div>
         <div style={{borderTop:"1px solid #E8E8E8", paddingTop:16}}>{renderQuestion()}</div>
@@ -200,6 +203,7 @@ function QuestionCard({ question, userAnswer, onAnswer, showResult, questionNum,
             <strong>Explanation:</strong> {explain}
           </div>
         )}
+      </div>
       </div>
     </div>
   );
@@ -325,6 +329,119 @@ function checkAnswer(question, userAnswer) {
     case "fill_multi": return fields.every(f => String(userAnswer[f.label]||"").trim().replace(/[,$\s]/g,"").toLowerCase() === String(f.ans).trim().replace(/[,$\s]/g,"").toLowerCase());
     default: return false;
   }
+}
+
+function buildSystemMessage(question, userAnswer, isSubmitted) {
+  let context = `You are an accounting instructor for students without an accounting background. Stay focused on accounting and related business topics. Be concise and instructive. Don't over-explain or provide too much detail.\n\nThe student is currently looking at this question:\n\nQ: ${question.q}`;
+  if (question.opts) context += `\nOptions:\n${question.opts.map((o, i) => `  ${i}) ${o}`).join("\n")}`;
+  if (question.pairs) context += `\nMatching items:\n${question.pairs.map(p => `  ${p.label} → ?`).join("\n")}`;
+  if (question.fields) context += `\nFields to fill:\n${question.fields.map(f => `  ${f.label}: ?`).join("\n")}`;
+  if (isSubmitted) {
+    const correct = checkAnswer(question, userAnswer);
+    context += `\n\nThe student has submitted their answer and got it ${correct ? "CORRECT" : "INCORRECT"}.`;
+    if (question.type === "mc" && userAnswer !== undefined) context += ` They chose: "${question.opts[userAnswer]}"`;
+    if (question.type === "tf" && userAnswer !== undefined) context += ` They chose: ${userAnswer}`;
+    if (question.explain) context += `\nExplanation shown to student: ${question.explain}`;
+    if (!correct) {
+      const ans = question.ans;
+      if (question.type === "mc") context += `\nCorrect answer: "${question.opts[ans[0]]}"`;
+      else if (question.type === "tf") context += `\nCorrect answer: ${ans}`;
+    }
+  } else {
+    context += `\n\nThe student has NOT submitted yet. Do NOT reveal the answer. Help them reason through it.`;
+  }
+  return { role: "system", content: context };
+}
+
+function ChatSidebar({ question, userAnswer, isSubmitted }) {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const messagesEndRef = useRef(null);
+  const prevQuestionId = useRef(question?.id);
+
+  useEffect(() => {
+    if (question && question.id !== prevQuestionId.current) {
+      setMessages([]);
+      prevQuestionId.current = question.id;
+    }
+  }, [question]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const send = async () => {
+    const text = input.trim();
+    if (!text || loading) return;
+    setInput("");
+    const userMsg = { role: "user", content: text };
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
+    setLoading(true);
+    try {
+      const systemMsg = buildSystemMessage(question, userAnswer, isSubmitted);
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: [systemMsg, ...newMessages] }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setMessages(prev => [...prev, { role: "assistant", content: data.content }]);
+    } catch (err) {
+      setMessages(prev => [...prev, { role: "assistant", content: "Sorry, something went wrong. Try again." }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isOpen) {
+    return (
+      <button onClick={() => setIsOpen(true)} style={{position:"fixed", bottom:24, right:24, width:56, height:56, borderRadius:"50%", background:"#0374B5", color:"#fff", border:"none", fontSize:24, cursor:"pointer", boxShadow:"0 2px 12px rgba(0,0,0,0.25)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000}} title="Ask about this question">
+        💬
+      </button>
+    );
+  }
+
+  return (
+    <div style={{position:"fixed", bottom:24, right:24, width:380, height:520, background:"#fff", border:"1px solid #C7CDD1", borderRadius:8, boxShadow:"0 4px 24px rgba(0,0,0,0.18)", display:"flex", flexDirection:"column", zIndex:1000, fontFamily:'"Lato", "Helvetica Neue", Helvetica, Arial, sans-serif'}}>
+      <div style={{background:"#2D3B45", padding:"12px 16px", borderRadius:"8px 8px 0 0", display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+        <span style={{color:"#fff", fontWeight:600, fontSize:14}}>Ask about this question</span>
+        <button onClick={() => setIsOpen(false)} style={{background:"transparent", border:"none", color:"#8B959E", fontSize:18, cursor:"pointer", padding:"0 4px"}}>✕</button>
+      </div>
+      <div style={{flex:1, overflowY:"auto", padding:12, display:"flex", flexDirection:"column", gap:8}}>
+        {messages.length === 0 && (
+          <div style={{color:"#8B959E", fontSize:13, textAlign:"center", marginTop:24}}>Ask anything about the current question. The tutor can see what you're working on.</div>
+        )}
+        {messages.map((m, i) => (
+          <div key={i} style={{alignSelf:m.role==="user"?"flex-end":"flex-start", maxWidth:"85%"}}>
+            <div style={{background:m.role==="user"?"#0374B5":"#F5F5F5", color:m.role==="user"?"#fff":"#2D3B45", padding:"8px 12px", borderRadius:m.role==="user"?"12px 12px 2px 12px":"12px 12px 12px 2px", fontSize:14, lineHeight:1.5, whiteSpace:"pre-wrap"}}>
+              {m.content}
+            </div>
+          </div>
+        ))}
+        {loading && (
+          <div style={{alignSelf:"flex-start", maxWidth:"85%"}}>
+            <div style={{background:"#F5F5F5", color:"#8B959E", padding:"8px 12px", borderRadius:"12px 12px 12px 2px", fontSize:14}}>Thinking...</div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+      <div style={{padding:12, borderTop:"1px solid #E8E8E8", display:"flex", gap:8}}>
+        <input
+          type="text"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && send()}
+          placeholder="Ask a question..."
+          style={{flex:1, padding:"8px 12px", border:"1px solid #C7CDD1", borderRadius:4, fontSize:14, outline:"none"}}
+        />
+        <button onClick={send} disabled={loading || !input.trim()} style={{background:input.trim()?"#0374B5":"#C7CDD1", color:"#fff", border:"none", padding:"8px 16px", borderRadius:4, fontSize:14, fontWeight:600, cursor:input.trim()?"pointer":"default"}}>Send</button>
+      </div>
+    </div>
+  );
 }
 
 export default function App() {
@@ -481,18 +598,28 @@ export default function App() {
           questionNum={currentIdx + 1}
           totalQuestions={questions.length}
         />
-        <div style={{display:"flex", gap:12, justifyContent:"flex-between"}}>
-          {!isSubmitted ? (
-            <button onClick={submitAnswer} disabled={answers[current.id]===undefined||answers[current.id]===null||(Array.isArray(answers[current.id])&&answers[current.id].length===0)} style={{background:answers[current.id]!==undefined&&answers[current.id]!==null?"#0374B5":"#C7CDD1", color:"#fff", border:"none", padding:"10px 28px", borderRadius:4, fontSize:15, fontWeight:600, cursor:answers[current.id]!==undefined?"pointer":"default"}}>
-              Submit Answer
-            </button>
-          ) : (
-            <button onClick={next} style={{background:"#0B874B", color:"#fff", border:"none", padding:"10px 28px", borderRadius:4, fontSize:15, fontWeight:600, cursor:"pointer"}}>
-              {currentIdx < questions.length - 1 ? "Next Question →" : "See Results"}
-            </button>
-          )}
+        <div style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+          <div>
+            {currentIdx > 0 && (
+              <button onClick={()=>setCurrentIdx(currentIdx - 1)} style={{background:"#fff", color:"#2D3B45", border:"1px solid #C7CDD1", padding:"10px 28px", borderRadius:4, fontSize:15, fontWeight:600, cursor:"pointer"}}>
+                ← Previous
+              </button>
+            )}
+          </div>
+          <div>
+            {!isSubmitted ? (
+              <button onClick={submitAnswer} disabled={answers[current.id]===undefined||answers[current.id]===null||(Array.isArray(answers[current.id])&&answers[current.id].length===0)} style={{background:answers[current.id]!==undefined&&answers[current.id]!==null?"#0374B5":"#C7CDD1", color:"#fff", border:"none", padding:"10px 28px", borderRadius:4, fontSize:15, fontWeight:600, cursor:answers[current.id]!==undefined?"pointer":"default"}}>
+                Submit Answer
+              </button>
+            ) : (
+              <button onClick={next} style={{background:"#0B874B", color:"#fff", border:"none", padding:"10px 28px", borderRadius:4, fontSize:15, fontWeight:600, cursor:"pointer"}}>
+                {currentIdx < questions.length - 1 ? "Next →" : "See Results"}
+              </button>
+            )}
+          </div>
         </div>
       </div>
+      <ChatSidebar question={current} userAnswer={answers[current.id]} isSubmitted={!!isSubmitted} />
     </div>
   );
 }
