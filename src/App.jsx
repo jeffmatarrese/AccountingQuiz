@@ -353,20 +353,62 @@ function buildSystemMessage(question, userAnswer, isSubmitted) {
   return { role: "system", content: context };
 }
 
-function ChatSidebar({ question, userAnswer, isSubmitted }) {
-  const [messages, setMessages] = useState([]);
+function renderMarkdown(text) {
+  const lines = text.split("\n");
+  const elements = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.startsWith("```")) {
+      const codeLines = [];
+      i++;
+      while (i < lines.length && !lines[i].startsWith("```")) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      i++;
+      elements.push(<pre key={elements.length} style={{background:"#1a1a1a", color:"#e0e0e0", padding:"8px 10px", borderRadius:4, fontSize:13, overflowX:"auto", margin:"4px 0"}}><code>{codeLines.join("\n")}</code></pre>);
+      continue;
+    }
+    const renderInline = (s) => {
+      const parts = [];
+      const re = /(\*\*(.+?)\*\*)|(`(.+?)`)/g;
+      let last = 0;
+      let match;
+      while ((match = re.exec(s)) !== null) {
+        if (match.index > last) parts.push(s.slice(last, match.index));
+        if (match[2]) parts.push(<strong key={parts.length}>{match[2]}</strong>);
+        else if (match[4]) parts.push(<code key={parts.length} style={{background:"#E8E8E8", padding:"1px 4px", borderRadius:3, fontSize:"0.9em"}}>{match[4]}</code>);
+        last = re.lastIndex;
+      }
+      if (last < s.length) parts.push(s.slice(last));
+      return parts;
+    };
+    if (line.trim() === "") { elements.push(<div key={elements.length} style={{height:8}} />); i++; continue; }
+    if (/^#{1,3}\s/.test(line)) {
+      const text = line.replace(/^#{1,3}\s+/, "");
+      elements.push(<div key={elements.length} style={{fontWeight:700, fontSize:15, margin:"4px 0"}}>{renderInline(text)}</div>);
+      i++; continue;
+    }
+    if (/^[-•*]\s/.test(line.trim())) {
+      elements.push(<div key={elements.length} style={{paddingLeft:12, margin:"2px 0"}}>{"• "}{renderInline(line.trim().replace(/^[-•*]\s+/, ""))}</div>);
+      i++; continue;
+    }
+    if (/^\d+\.\s/.test(line.trim())) {
+      const num = line.trim().match(/^(\d+)\./)[1];
+      elements.push(<div key={elements.length} style={{paddingLeft:12, margin:"2px 0"}}>{num}. {renderInline(line.trim().replace(/^\d+\.\s+/, ""))}</div>);
+      i++; continue;
+    }
+    elements.push(<div key={elements.length} style={{margin:"2px 0"}}>{renderInline(line)}</div>);
+    i++;
+  }
+  return elements;
+}
+
+function ChatDrawer({ question, userAnswer, isSubmitted, isOpen, onToggle, messages, setMessages }) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [isOpen, setIsOpen] = useState(false);
   const messagesEndRef = useRef(null);
-  const prevQuestionId = useRef(question?.id);
-
-  useEffect(() => {
-    if (question && question.id !== prevQuestionId.current) {
-      setMessages([]);
-      prevQuestionId.current = question.id;
-    }
-  }, [question]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -397,39 +439,31 @@ function ChatSidebar({ question, userAnswer, isSubmitted }) {
     }
   };
 
-  if (!isOpen) {
-    return (
-      <button onClick={() => setIsOpen(true)} style={{position:"fixed", bottom:24, right:24, width:56, height:56, borderRadius:"50%", background:"#0374B5", color:"#fff", border:"none", fontSize:24, cursor:"pointer", boxShadow:"0 2px 12px rgba(0,0,0,0.25)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000}} title="Ask about this question">
-        💬
-      </button>
-    );
-  }
-
   return (
-    <div style={{position:"fixed", bottom:24, right:24, width:380, height:520, background:"#fff", border:"1px solid #C7CDD1", borderRadius:8, boxShadow:"0 4px 24px rgba(0,0,0,0.18)", display:"flex", flexDirection:"column", zIndex:1000, fontFamily:'"Lato", "Helvetica Neue", Helvetica, Arial, sans-serif'}}>
-      <div style={{background:"#2D3B45", padding:"12px 16px", borderRadius:"8px 8px 0 0", display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+    <div style={{width: isOpen ? "36%" : 0, minWidth: isOpen ? 340 : 0, borderLeft: isOpen ? "1px solid #C7CDD1" : "none", background:"#fff", display:"flex", flexDirection:"column", transition:"width 0.3s ease, min-width 0.3s ease", overflow:"hidden", flexShrink:0}}>
+      <div style={{background:"#2D3B45", padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center", flexShrink:0}}>
         <span style={{color:"#fff", fontWeight:600, fontSize:14}}>Ask about this question</span>
-        <button onClick={() => setIsOpen(false)} style={{background:"transparent", border:"none", color:"#8B959E", fontSize:18, cursor:"pointer", padding:"0 4px"}}>✕</button>
+        <button onClick={onToggle} style={{background:"transparent", border:"none", color:"#8B959E", fontSize:18, cursor:"pointer", padding:"0 4px"}}>✕</button>
       </div>
-      <div style={{flex:1, overflowY:"auto", padding:12, display:"flex", flexDirection:"column", gap:8}}>
+      <div style={{flex:1, overflowY:"auto", padding:16, display:"flex", flexDirection:"column", gap:10}}>
         {messages.length === 0 && (
-          <div style={{color:"#8B959E", fontSize:13, textAlign:"center", marginTop:24}}>Ask anything about the current question. The tutor can see what you're working on.</div>
+          <div style={{color:"#8B959E", fontSize:13, textAlign:"center", marginTop:24, padding:"0 8px"}}>Ask anything about the current question. The tutor can see what you're working on.</div>
         )}
         {messages.map((m, i) => (
-          <div key={i} style={{alignSelf:m.role==="user"?"flex-end":"flex-start", maxWidth:"85%"}}>
-            <div style={{background:m.role==="user"?"#0374B5":"#F5F5F5", color:m.role==="user"?"#fff":"#2D3B45", padding:"8px 12px", borderRadius:m.role==="user"?"12px 12px 2px 12px":"12px 12px 12px 2px", fontSize:14, lineHeight:1.5, whiteSpace:"pre-wrap"}}>
-              {m.content}
+          <div key={i} style={{alignSelf:m.role==="user"?"flex-end":"flex-start", maxWidth:"90%"}}>
+            <div style={{background:m.role==="user"?"#0374B5":"#F5F5F5", color:m.role==="user"?"#fff":"#2D3B45", padding:"10px 14px", borderRadius:m.role==="user"?"12px 12px 2px 12px":"12px 12px 12px 2px", fontSize:14, lineHeight:1.6}}>
+              {m.role === "user" ? m.content : renderMarkdown(m.content)}
             </div>
           </div>
         ))}
         {loading && (
-          <div style={{alignSelf:"flex-start", maxWidth:"85%"}}>
-            <div style={{background:"#F5F5F5", color:"#8B959E", padding:"8px 12px", borderRadius:"12px 12px 12px 2px", fontSize:14}}>Thinking...</div>
+          <div style={{alignSelf:"flex-start", maxWidth:"90%"}}>
+            <div style={{background:"#F5F5F5", color:"#8B959E", padding:"10px 14px", borderRadius:"12px 12px 12px 2px", fontSize:14}}>Thinking...</div>
           </div>
         )}
         <div ref={messagesEndRef} />
       </div>
-      <div style={{padding:12, borderTop:"1px solid #E8E8E8", display:"flex", gap:8}}>
+      <div style={{padding:12, borderTop:"1px solid #E8E8E8", display:"flex", gap:8, flexShrink:0}}>
         <input
           type="text"
           value={input}
@@ -453,6 +487,8 @@ export default function App() {
   const [submitted, setSubmitted] = useState({});
   const [score, setScore] = useState({correct:0, total:0, pts:0, maxPts:0});
   const [shuffled, setShuffled] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState([]);
 
   const filteredQs = useMemo(() => {
     let qs = filter === "All" ? [...QUESTIONS] : QUESTIONS.filter(q=>q.section===filter);
@@ -573,53 +609,60 @@ export default function App() {
   const progress = questions.length > 0 ? ((currentIdx + 1) / questions.length) * 100 : 0;
 
   return (
-    <div style={{minHeight:"100vh", background:"#F5F5F5", fontFamily:'"Lato", "Helvetica Neue", Helvetica, Arial, sans-serif'}}>
-      <div style={{background:"#2D3B45", padding:"12px 24px", borderBottom:"3px solid #0374B5"}}>
-        <div style={{maxWidth:900, margin:"0 auto", display:"flex", justifyContent:"space-between", alignItems:"center"}}>
-          <div>
-            <div style={{fontSize:12, color:"#8B959E"}}>{filter === "All" ? "All Sections" : filter}</div>
-            <div style={{fontSize:16, fontWeight:600, color:"#fff"}}>Question {currentIdx + 1} of {questions.length}</div>
+    <div style={{display:"flex", minHeight:"100vh", fontFamily:'"Lato", "Helvetica Neue", Helvetica, Arial, sans-serif'}}>
+      <div style={{flex:1, minWidth:0, background:"#F5F5F5", display:"flex", flexDirection:"column"}}>
+        <div style={{background:"#2D3B45", padding:"12px 24px", borderBottom:"3px solid #0374B5"}}>
+          <div style={{maxWidth:900, margin:"0 auto", display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+            <div>
+              <div style={{fontSize:12, color:"#8B959E"}}>{filter === "All" ? "All Sections" : filter}</div>
+              <div style={{fontSize:16, fontWeight:600, color:"#fff"}}>Question {currentIdx + 1} of {questions.length}</div>
+            </div>
+            <div style={{display:"flex", alignItems:"center", gap:16}}>
+              <div style={{fontSize:14, color:"#8B959E"}}>{score.correct}/{score.total} correct</div>
+              {!chatOpen && (
+                <button onClick={()=>setChatOpen(true)} style={{background:"#0374B5", color:"#fff", border:"none", padding:"6px 14px", borderRadius:4, fontSize:13, cursor:"pointer"}}>Tutor</button>
+              )}
+              <button onClick={()=>setMode("menu")} style={{background:"transparent", color:"#8B959E", border:"1px solid #556572", padding:"6px 14px", borderRadius:4, fontSize:13, cursor:"pointer"}}>Exit</button>
+            </div>
           </div>
-          <div style={{display:"flex", alignItems:"center", gap:16}}>
-            <div style={{fontSize:14, color:"#8B959E"}}>{score.correct}/{score.total} correct</div>
-            <button onClick={()=>setMode("menu")} style={{background:"transparent", color:"#8B959E", border:"1px solid #556572", padding:"6px 14px", borderRadius:4, fontSize:13, cursor:"pointer"}}>Exit</button>
+        </div>
+        <div style={{background:"#E8E8E8", height:3}}>
+          <div style={{background:"#0374B5", height:3, width:`${progress}%`, transition:"width 0.3s"}} />
+        </div>
+        <div style={{flex:1, overflowY:"auto"}}>
+          <div style={{maxWidth:900, margin:"0 auto", padding:"24px 24px"}}>
+            <QuestionCard
+              question={current}
+              userAnswer={answers[current.id]}
+              onAnswer={(val) => setAnswers(prev => ({...prev, [current.id]: val}))}
+              showResult={isSubmitted}
+              questionNum={currentIdx + 1}
+              totalQuestions={questions.length}
+            />
+            <div style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+              <div>
+                {currentIdx > 0 && (
+                  <button onClick={()=>setCurrentIdx(currentIdx - 1)} style={{background:"#fff", color:"#2D3B45", border:"1px solid #C7CDD1", padding:"10px 28px", borderRadius:4, fontSize:15, fontWeight:600, cursor:"pointer"}}>
+                    ← Previous
+                  </button>
+                )}
+              </div>
+              <div>
+                {!isSubmitted ? (
+                  <button onClick={submitAnswer} disabled={answers[current.id]===undefined||answers[current.id]===null||(Array.isArray(answers[current.id])&&answers[current.id].length===0)} style={{background:answers[current.id]!==undefined&&answers[current.id]!==null?"#0374B5":"#C7CDD1", color:"#fff", border:"none", padding:"10px 28px", borderRadius:4, fontSize:15, fontWeight:600, cursor:answers[current.id]!==undefined?"pointer":"default"}}>
+                    Submit Answer
+                  </button>
+                ) : (
+                  <button onClick={next} style={{background:"#0B874B", color:"#fff", border:"none", padding:"10px 28px", borderRadius:4, fontSize:15, fontWeight:600, cursor:"pointer"}}>
+                    {currentIdx < questions.length - 1 ? "Next →" : "See Results"}
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>
-      <div style={{background:"#E8E8E8", height:3}}>
-        <div style={{background:"#0374B5", height:3, width:`${progress}%`, transition:"width 0.3s"}} />
-      </div>
-      <div style={{maxWidth:900, margin:"0 auto", padding:"24px 24px"}}>
-        <QuestionCard
-          question={current}
-          userAnswer={answers[current.id]}
-          onAnswer={(val) => setAnswers(prev => ({...prev, [current.id]: val}))}
-          showResult={isSubmitted}
-          questionNum={currentIdx + 1}
-          totalQuestions={questions.length}
-        />
-        <div style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
-          <div>
-            {currentIdx > 0 && (
-              <button onClick={()=>setCurrentIdx(currentIdx - 1)} style={{background:"#fff", color:"#2D3B45", border:"1px solid #C7CDD1", padding:"10px 28px", borderRadius:4, fontSize:15, fontWeight:600, cursor:"pointer"}}>
-                ← Previous
-              </button>
-            )}
-          </div>
-          <div>
-            {!isSubmitted ? (
-              <button onClick={submitAnswer} disabled={answers[current.id]===undefined||answers[current.id]===null||(Array.isArray(answers[current.id])&&answers[current.id].length===0)} style={{background:answers[current.id]!==undefined&&answers[current.id]!==null?"#0374B5":"#C7CDD1", color:"#fff", border:"none", padding:"10px 28px", borderRadius:4, fontSize:15, fontWeight:600, cursor:answers[current.id]!==undefined?"pointer":"default"}}>
-                Submit Answer
-              </button>
-            ) : (
-              <button onClick={next} style={{background:"#0B874B", color:"#fff", border:"none", padding:"10px 28px", borderRadius:4, fontSize:15, fontWeight:600, cursor:"pointer"}}>
-                {currentIdx < questions.length - 1 ? "Next →" : "See Results"}
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-      <ChatSidebar question={current} userAnswer={answers[current.id]} isSubmitted={!!isSubmitted} />
+      <ChatDrawer question={current} userAnswer={answers[current.id]} isSubmitted={!!isSubmitted} isOpen={chatOpen} onToggle={()=>setChatOpen(false)} messages={chatMessages} setMessages={setChatMessages} />
     </div>
   );
 }
