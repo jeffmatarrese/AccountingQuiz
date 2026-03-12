@@ -41,3 +41,34 @@
 .read-the-docs {
   color: #888;
 }
+
+@media (max-width: 640px) {
+  #root {
+    padding: 1rem;
+  }
+
+  .matching-row {
+    flex-direction: column !important;
+    gap: 8px !important;
+  }
+
+  .matching-row select {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .fill-row {
+    flex-direction: column !important;
+    gap: 4px !important;
+    align-items: flex-start !important;
+  }
+
+  .fill-row input {
+    width: 100% !important;
+    box-sizing: border-box;
+  }
+
+  .fill-row span:first-child {
+    min-width: 0 !important;
+  }
+}

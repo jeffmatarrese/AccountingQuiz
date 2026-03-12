@@ -1,5 +1,15 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 
+function useIsMobile(breakpoint = 640) {
+  const [isMobile, setIsMobile] = useState(window.innerWidth < breakpoint);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < breakpoint);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, [breakpoint]);
+  return isMobile;
+}
+
 const QUESTIONS = [
   // SECTION 1: INVESTMENTS
   {id:1, section:"Investments", type:"mc", q:"A company purchases bonds and intends to hold them until they mature. How should this investment be classified?", opts:["Trading securities","Available-for-sale securities","Held-to-maturity securities","Equity method investment"], ans:[2], pts:1},
@@ -355,7 +365,7 @@ function MatchingQuestion({ pairs, options, userAnswer, onAnswer, showResult }) 
     const selected = userAnswer[pair.label] || "";
     const isCorrect = selected === pair.answer;
     return (
-      <div key={i} style={{display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 0", borderTop:i>0?"1px solid #E8E8E8":"none", gap:16}}>
+      <div key={i} className="matching-row" style={{display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 0", borderTop:i>0?"1px solid #E8E8E8":"none", gap:16}}>
         {showResult && <span style={{color:isCorrect?"#0B874B":"#D93025", fontSize:18, flexShrink:0}}>{isCorrect?"✓":"✗"}</span>}
         <span style={{fontWeight:600, fontSize:15, color:"#2D3B45", flex:1}}>{pair.label}</span>
         <select value={selected} onChange={e=>{if(!showResult){const next={...userAnswer};next[pair.label]=e.target.value;onAnswer(next);}}} disabled={showResult} style={{padding:"8px 32px 8px 12px", fontSize:14, border:"1px solid #C7CDD1", borderRadius:4, background:showResult?(isCorrect?"#E6F4EA":"#FCE8E6"):"#F5F5F5", color:"#2D3B45", minWidth:200, appearance:"auto", cursor:showResult?"default":"pointer"}}>
@@ -383,7 +393,7 @@ function FillMultiQuestion({ fields, userAnswer, onAnswer, showResult }) {
     const val = userAnswer[field.label] || "";
     const isCorrect = showResult && String(val).trim().replace(/[,$\s%]/g,"").toLowerCase() === String(field.ans).trim().replace(/[,$\s%]/g,"").toLowerCase();
     return (
-      <div key={i} style={{display:"flex", alignItems:"center", gap:12, padding:"8px 0", borderTop:i>0?"1px solid #F0F0F0":"none"}}>
+      <div key={i} className="fill-row" style={{display:"flex", alignItems:"center", gap:12, padding:"8px 0", borderTop:i>0?"1px solid #F0F0F0":"none"}}>
         {showResult && <span style={{color:isCorrect?"#0B874B":"#D93025", fontSize:18, flexShrink:0}}>{isCorrect?"✓":"✗"}</span>}
         <span style={{fontSize:14, color:"#2D3B45", minWidth:200, fontWeight:500}}>{field.label}:</span>
         <input type="text" value={val} onChange={e=>{if(!showResult){const next={...userAnswer};next[field.label]=e.target.value;onAnswer(next);}}} disabled={showResult} style={{padding:"6px 10px", fontSize:14, border:`1px solid ${showResult?(isCorrect?"#0B874B":"#D93025"):"#C7CDD1"}`, borderRadius:4, width:140, background:showResult?(isCorrect?"#E6F4EA":"#FCE8E6"):"#fff", color:"#2D3B45"}} />
@@ -486,6 +496,7 @@ function ChatDrawer({ question, userAnswer, isSubmitted, isOpen, onToggle, messa
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef(null);
   const prevQuestionId = useRef(question?.id);
+  const isMobile = useIsMobile();
 
   // Insert a separator when the question changes so we know which messages belong to which question
   useEffect(() => {
@@ -531,7 +542,10 @@ function ChatDrawer({ question, userAnswer, isSubmitted, isOpen, onToggle, messa
   };
 
   return (
-    <div style={{width: isOpen ? "36%" : 0, minWidth: isOpen ? 340 : 0, borderLeft: isOpen ? "1px solid #C7CDD1" : "none", background:"#fff", display:"flex", flexDirection:"column", transition:"width 0.3s ease, min-width 0.3s ease", overflow:"hidden", flexShrink:0, height:"100vh"}}>
+    <div style={isMobile
+      ? {display: isOpen ? "flex" : "none", position:"fixed", inset:0, zIndex:100, background:"#fff", flexDirection:"column", height:"100vh"}
+      : {width: isOpen ? "36%" : 0, minWidth: isOpen ? 340 : 0, borderLeft: isOpen ? "1px solid #C7CDD1" : "none", background:"#fff", display:"flex", flexDirection:"column", transition:"width 0.3s ease, min-width 0.3s ease", overflow:"hidden", flexShrink:0, height:"100vh"}
+    }>
       <div style={{background:"#2D3B45", padding:"12px 16px", borderBottom:"3px solid #0374B5", display:"flex", justifyContent:"space-between", alignItems:"center", flexShrink:0}}>
         <span style={{color:"#fff", fontWeight:600, fontSize:14}}>Ask about this question</span>
         <button onClick={onToggle} style={{background:"transparent", border:"none", color:"#8B959E", fontSize:18, cursor:"pointer", padding:"0 4px"}}>✕</button>
@@ -591,6 +605,7 @@ export default function App({ chatEnabled = false }) {
   const [shuffled, setShuffled] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState([]);
+  const isMobile = useIsMobile();
 
   const filteredQs = useMemo(() => {
     let qs = filter === "All" ? [...QUESTIONS] : QUESTIONS.filter(q=>q.section===filter);
@@ -652,7 +667,7 @@ export default function App({ chatEnabled = false }) {
             </p>
           </div>
 
-          <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:24}}>
+          <div style={{display:"grid", gridTemplateColumns:isMobile ? "1fr" : "1fr 1fr", gap:12, marginBottom:24}}>
             <button onClick={()=>startQuiz("All",false)} style={{padding:"16px 20px", background:"#0B874B", color:"#fff", border:"none", borderRadius:4, fontSize:15, fontWeight:600, cursor:"pointer", textAlign:"left"}}>
               📝 All Questions ({QUESTIONS.length})
               <div style={{fontSize:12, fontWeight:400, opacity:0.85, marginTop:4}}>Sequential order</div>
@@ -664,7 +679,7 @@ export default function App({ chatEnabled = false }) {
           </div>
 
           <h3 style={{fontSize:14, color:"#8B959E", textTransform:"uppercase", letterSpacing:1, marginBottom:12}}>By Section</h3>
-          <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8}}>
+          <div style={{display:"grid", gridTemplateColumns:isMobile ? "1fr" : "1fr 1fr", gap:8}}>
             {SECTIONS.map(s => {
               const count = QUESTIONS.filter(q=>q.section===s).length;
               return (
@@ -713,26 +728,44 @@ export default function App({ chatEnabled = false }) {
   return (
     <div style={{display:"flex", height:"100vh", overflow:"hidden", fontFamily:'"Lato", "Helvetica Neue", Helvetica, Arial, sans-serif'}}>
       <div style={{flex:1, minWidth:0, background:"#F5F5F5", display:"flex", flexDirection:"column", height:"100vh"}}>
-        <div style={{background:"#2D3B45", padding:"12px 24px", borderBottom:"3px solid #0374B5", flexShrink:0}}>
-          <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", position:"relative"}}>
-            <button onClick={()=>setMode("menu")} style={{background:"transparent", color:"#8B959E", border:"1px solid #556572", padding:"6px 14px", borderRadius:4, fontSize:13, cursor:"pointer", zIndex:1}}>Exit Quiz</button>
-            <div style={{position:"absolute", left:0, right:0, textAlign:"center", pointerEvents:"none"}}>
-              <div style={{fontSize:12, color:"#8B959E"}}>{filter === "All" ? "All Sections" : filter}{shuffled ? " \u{1F500}" : ""}</div>
-              <div style={{fontSize:16, fontWeight:600, color:"#fff"}}>Question {currentIdx + 1} of {questions.length}</div>
+        <div style={{background:"#2D3B45", padding:isMobile ? "10px 12px" : "12px 24px", borderBottom:"3px solid #0374B5", flexShrink:0}}>
+          {isMobile ? (
+            <>
+              <div style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+                <button onClick={()=>setMode("menu")} style={{background:"transparent", color:"#8B959E", border:"1px solid #556572", padding:"6px 12px", borderRadius:4, fontSize:12, cursor:"pointer"}}>Exit Quiz</button>
+                <div style={{display:"flex", alignItems:"center", gap:10}}>
+                  <div style={{fontSize:13, color:"#8B959E"}}>{score.correct}/{score.total}</div>
+                  {chatEnabled && !chatOpen && (
+                    <button onClick={()=>setChatOpen(true)} style={{background:"#0374B5", color:"#fff", border:"none", padding:"5px 10px", borderRadius:4, fontSize:12, cursor:"pointer"}}>Tutor</button>
+                  )}
+                </div>
+              </div>
+              <div style={{textAlign:"center", marginTop:6}}>
+                <div style={{fontSize:11, color:"#8B959E"}}>{filter === "All" ? "All Sections" : filter}{shuffled ? " \u{1F500}" : ""}</div>
+                <div style={{fontSize:14, fontWeight:600, color:"#fff"}}>Question {currentIdx + 1} of {questions.length}</div>
+              </div>
+            </>
+          ) : (
+            <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", position:"relative"}}>
+              <button onClick={()=>setMode("menu")} style={{background:"transparent", color:"#8B959E", border:"1px solid #556572", padding:"6px 14px", borderRadius:4, fontSize:13, cursor:"pointer", zIndex:1}}>Exit Quiz</button>
+              <div style={{position:"absolute", left:0, right:0, textAlign:"center", pointerEvents:"none"}}>
+                <div style={{fontSize:12, color:"#8B959E"}}>{filter === "All" ? "All Sections" : filter}{shuffled ? " \u{1F500}" : ""}</div>
+                <div style={{fontSize:16, fontWeight:600, color:"#fff"}}>Question {currentIdx + 1} of {questions.length}</div>
+              </div>
+              <div style={{display:"flex", alignItems:"center", gap:16, zIndex:1}}>
+                <div style={{fontSize:14, color:"#8B959E"}}>{score.correct}/{score.total} correct</div>
+                {chatEnabled && !chatOpen && (
+                  <button onClick={()=>setChatOpen(true)} style={{background:"#0374B5", color:"#fff", border:"none", padding:"6px 14px", borderRadius:4, fontSize:13, cursor:"pointer"}}>Tutor</button>
+                )}
+              </div>
             </div>
-            <div style={{display:"flex", alignItems:"center", gap:16, zIndex:1}}>
-              <div style={{fontSize:14, color:"#8B959E"}}>{score.correct}/{score.total} correct</div>
-              {chatEnabled && !chatOpen && (
-                <button onClick={()=>setChatOpen(true)} style={{background:"#0374B5", color:"#fff", border:"none", padding:"6px 14px", borderRadius:4, fontSize:13, cursor:"pointer"}}>Tutor</button>
-              )}
-            </div>
-          </div>
+          )}
         </div>
         <div style={{background:"#E8E8E8", height:3, flexShrink:0}}>
           <div style={{background:"#0374B5", height:3, width:`${progress}%`, transition:"width 0.3s"}} />
         </div>
         <div style={{flex:1, overflowY:"auto"}}>
-          <div style={{maxWidth:900, margin:"0 auto", padding:"24px 24px"}}>
+          <div style={{maxWidth:900, margin:"0 auto", padding:isMobile ? "16px" : "24px 24px"}}>
             <QuestionCard
               question={current}
               userAnswer={answers[current.id]}
