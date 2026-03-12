@@ -409,6 +409,17 @@ function ChatDrawer({ question, userAnswer, isSubmitted, isOpen, onToggle, messa
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef(null);
+  const prevQuestionId = useRef(question?.id);
+
+  // Insert a separator when the question changes so we know which messages belong to which question
+  useEffect(() => {
+    if (question && question.id !== prevQuestionId.current) {
+      if (messages.length > 0) {
+        setMessages(prev => [...prev, { role: "separator", questionId: question.id, content: `— Question ${question.id} —` }]);
+      }
+      prevQuestionId.current = question.id;
+    }
+  }, [question]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -418,30 +429,34 @@ function ChatDrawer({ question, userAnswer, isSubmitted, isOpen, onToggle, messa
     const text = input.trim();
     if (!text || loading) return;
     setInput("");
-    const userMsg = { role: "user", content: text };
+    const userMsg = { role: "user", content: text, questionId: question.id };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
     setLoading(true);
     try {
       const systemMsg = buildSystemMessage(question, userAnswer, isSubmitted);
+      // Only send messages from the current question to the API
+      const lastSepIdx = newMessages.map((m, i) => m.role === "separator" ? i : -1).filter(i => i >= 0).pop();
+      const contextMessages = lastSepIdx !== undefined ? newMessages.slice(lastSepIdx + 1) : newMessages;
+      const apiMessages = contextMessages.filter(m => m.role === "user" || m.role === "assistant");
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: [systemMsg, ...newMessages] }),
+        body: JSON.stringify({ messages: [systemMsg, ...apiMessages] }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      setMessages(prev => [...prev, { role: "assistant", content: data.content }]);
+      setMessages(prev => [...prev, { role: "assistant", content: data.content, questionId: question.id }]);
     } catch (err) {
-      setMessages(prev => [...prev, { role: "assistant", content: "Sorry, something went wrong. Try again." }]);
+      setMessages(prev => [...prev, { role: "assistant", content: "Sorry, something went wrong. Try again.", questionId: question.id }]);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div style={{width: isOpen ? "36%" : 0, minWidth: isOpen ? 340 : 0, borderLeft: isOpen ? "1px solid #C7CDD1" : "none", background:"#fff", display:"flex", flexDirection:"column", transition:"width 0.3s ease, min-width 0.3s ease", overflow:"hidden", flexShrink:0}}>
-      <div style={{background:"#2D3B45", padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center", flexShrink:0}}>
+    <div style={{width: isOpen ? "36%" : 0, minWidth: isOpen ? 340 : 0, borderLeft: isOpen ? "1px solid #C7CDD1" : "none", background:"#fff", display:"flex", flexDirection:"column", transition:"width 0.3s ease, min-width 0.3s ease", overflow:"hidden", flexShrink:0, height:"100vh"}}>
+      <div style={{background:"#2D3B45", padding:"12px 16px", borderBottom:"3px solid #0374B5", display:"flex", justifyContent:"space-between", alignItems:"center", flexShrink:0}}>
         <span style={{color:"#fff", fontWeight:600, fontSize:14}}>Ask about this question</span>
         <button onClick={onToggle} style={{background:"transparent", border:"none", color:"#8B959E", fontSize:18, cursor:"pointer", padding:"0 4px"}}>✕</button>
       </div>
@@ -449,13 +464,24 @@ function ChatDrawer({ question, userAnswer, isSubmitted, isOpen, onToggle, messa
         {messages.length === 0 && (
           <div style={{color:"#8B959E", fontSize:13, textAlign:"center", marginTop:24, padding:"0 8px"}}>Ask anything about the current question. The tutor can see what you're working on.</div>
         )}
-        {messages.map((m, i) => (
-          <div key={i} style={{alignSelf:m.role==="user"?"flex-end":"flex-start", maxWidth:"90%"}}>
-            <div style={{background:m.role==="user"?"#0374B5":"#F5F5F5", color:m.role==="user"?"#fff":"#2D3B45", padding:"10px 14px", borderRadius:m.role==="user"?"12px 12px 2px 12px":"12px 12px 12px 2px", fontSize:14, lineHeight:1.6}}>
-              {m.role === "user" ? m.content : renderMarkdown(m.content)}
+        {messages.map((m, i) => {
+          if (m.role === "separator") {
+            return (
+              <div key={i} style={{display:"flex", alignItems:"center", gap:8, margin:"8px 0"}}>
+                <div style={{flex:1, height:1, background:"#E8E8E8"}} />
+                <span style={{fontSize:11, color:"#8B959E", whiteSpace:"nowrap"}}>{m.content}</span>
+                <div style={{flex:1, height:1, background:"#E8E8E8"}} />
+              </div>
+            );
+          }
+          return (
+            <div key={i} style={{alignSelf:m.role==="user"?"flex-end":"flex-start", maxWidth:"90%"}}>
+              <div style={{background:m.role==="user"?"#0374B5":"#F5F5F5", color:m.role==="user"?"#fff":"#2D3B45", padding:"10px 14px", borderRadius:m.role==="user"?"12px 12px 2px 12px":"12px 12px 12px 2px", fontSize:14, lineHeight:1.6}}>
+                {m.role === "user" ? m.content : renderMarkdown(m.content)}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {loading && (
           <div style={{alignSelf:"flex-start", maxWidth:"90%"}}>
             <div style={{background:"#F5F5F5", color:"#8B959E", padding:"10px 14px", borderRadius:"12px 12px 12px 2px", fontSize:14}}>Thinking...</div>
@@ -463,16 +489,16 @@ function ChatDrawer({ question, userAnswer, isSubmitted, isOpen, onToggle, messa
         )}
         <div ref={messagesEndRef} />
       </div>
-      <div style={{padding:12, borderTop:"1px solid #E8E8E8", display:"flex", gap:8, flexShrink:0}}>
+      <div style={{padding:"16px 16px 20px", borderTop:"1px solid #E8E8E8", display:"flex", gap:8, flexShrink:0}}>
         <input
           type="text"
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === "Enter" && send()}
           placeholder="Ask a question..."
-          style={{flex:1, padding:"8px 12px", border:"1px solid #C7CDD1", borderRadius:4, fontSize:14, outline:"none"}}
+          style={{flex:1, padding:"12px 14px", border:"1px solid #C7CDD1", borderRadius:6, fontSize:15, outline:"none", background:"#fff", color:"#2D3B45"}}
         />
-        <button onClick={send} disabled={loading || !input.trim()} style={{background:input.trim()?"#0374B5":"#C7CDD1", color:"#fff", border:"none", padding:"8px 16px", borderRadius:4, fontSize:14, fontWeight:600, cursor:input.trim()?"pointer":"default"}}>Send</button>
+        <button onClick={send} disabled={loading || !input.trim()} style={{background:input.trim()?"#0374B5":"#C7CDD1", color:"#fff", border:"none", padding:"12px 20px", borderRadius:6, fontSize:15, fontWeight:600, cursor:input.trim()?"pointer":"default"}}>Send</button>
       </div>
     </div>
   );
@@ -536,7 +562,7 @@ export default function App() {
   if (mode === "menu") {
     return (
       <div style={{minHeight:"100vh", background:"#F5F5F5", fontFamily:'"Lato", "Helvetica Neue", Helvetica, Arial, sans-serif'}}>
-        <div style={{background:"#2D3B45", padding:"16px 24px", borderBottom:"3px solid #0374B5"}}>
+        <div style={{background:"#2D3B45", padding:"12px 24px", borderBottom:"3px solid #0374B5"}}>
           <div style={{maxWidth:900, margin:"0 auto"}}>
             <div style={{fontSize:12, color:"#8B959E", letterSpacing:0.5}}>ACCT 403 — 2026W — Teoh</div>
             <div style={{fontSize:22, fontWeight:700, color:"#fff", marginTop:4}}>Final Exam Study Quiz</div>
@@ -609,24 +635,24 @@ export default function App() {
   const progress = questions.length > 0 ? ((currentIdx + 1) / questions.length) * 100 : 0;
 
   return (
-    <div style={{display:"flex", minHeight:"100vh", fontFamily:'"Lato", "Helvetica Neue", Helvetica, Arial, sans-serif'}}>
-      <div style={{flex:1, minWidth:0, background:"#F5F5F5", display:"flex", flexDirection:"column"}}>
-        <div style={{background:"#2D3B45", padding:"12px 24px", borderBottom:"3px solid #0374B5"}}>
-          <div style={{maxWidth:900, margin:"0 auto", display:"flex", justifyContent:"space-between", alignItems:"center"}}>
-            <div>
-              <div style={{fontSize:12, color:"#8B959E"}}>{filter === "All" ? "All Sections" : filter}</div>
-              <div style={{fontSize:16, fontWeight:600, color:"#fff"}}>Question {currentIdx + 1} of {questions.length}</div>
-            </div>
+    <div style={{display:"flex", height:"100vh", overflow:"hidden", fontFamily:'"Lato", "Helvetica Neue", Helvetica, Arial, sans-serif'}}>
+      <div style={{flex:1, minWidth:0, background:"#F5F5F5", display:"flex", flexDirection:"column", height:"100vh"}}>
+        <div style={{background:"#2D3B45", padding:"12px 24px", borderBottom:"3px solid #0374B5", flexShrink:0}}>
+          <div style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+            <button onClick={()=>setMode("menu")} style={{background:"transparent", color:"#8B959E", border:"1px solid #556572", padding:"6px 14px", borderRadius:4, fontSize:13, cursor:"pointer"}}>Exit Quiz</button>
             <div style={{display:"flex", alignItems:"center", gap:16}}>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:12, color:"#8B959E"}}>{filter === "All" ? "All Sections" : filter}{shuffled ? " \u{1F500}" : ""}</div>
+                <div style={{fontSize:16, fontWeight:600, color:"#fff"}}>Question {currentIdx + 1} of {questions.length}</div>
+              </div>
               <div style={{fontSize:14, color:"#8B959E"}}>{score.correct}/{score.total} correct</div>
               {!chatOpen && (
                 <button onClick={()=>setChatOpen(true)} style={{background:"#0374B5", color:"#fff", border:"none", padding:"6px 14px", borderRadius:4, fontSize:13, cursor:"pointer"}}>Tutor</button>
               )}
-              <button onClick={()=>setMode("menu")} style={{background:"transparent", color:"#8B959E", border:"1px solid #556572", padding:"6px 14px", borderRadius:4, fontSize:13, cursor:"pointer"}}>Exit</button>
             </div>
           </div>
         </div>
-        <div style={{background:"#E8E8E8", height:3}}>
+        <div style={{background:"#E8E8E8", height:3, flexShrink:0}}>
           <div style={{background:"#0374B5", height:3, width:`${progress}%`, transition:"width 0.3s"}} />
         </div>
         <div style={{flex:1, overflowY:"auto"}}>
