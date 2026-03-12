@@ -580,7 +580,7 @@ function ChatDrawer({ question, userAnswer, isSubmitted, isOpen, onToggle, messa
   );
 }
 
-export default function App() {
+export default function App({ chatEnabled = false }) {
   const [mode, setMode] = useState("menu");
   const [filter, setFilter] = useState("All");
   const [questions, setQuestions] = useState([]);
@@ -722,7 +722,7 @@ export default function App() {
                 <div style={{fontSize:16, fontWeight:600, color:"#fff"}}>Question {currentIdx + 1} of {questions.length}</div>
               </div>
               <div style={{fontSize:14, color:"#8B959E"}}>{score.correct}/{score.total} correct</div>
-              {!chatOpen && (
+              {chatEnabled && !chatOpen && (
                 <button onClick={()=>setChatOpen(true)} style={{background:"#0374B5", color:"#fff", border:"none", padding:"6px 14px", borderRadius:4, fontSize:13, cursor:"pointer"}}>Tutor</button>
               )}
             </div>
@@ -764,7 +764,7 @@ export default function App() {
           </div>
         </div>
       </div>
-      <ChatDrawer question={current} userAnswer={answers[current.id]} isSubmitted={!!isSubmitted} isOpen={chatOpen} onToggle={()=>setChatOpen(false)} messages={chatMessages} setMessages={setChatMessages} />
+      {chatEnabled && <ChatDrawer question={current} userAnswer={answers[current.id]} isSubmitted={!!isSubmitted} isOpen={chatOpen} onToggle={()=>setChatOpen(false)} messages={chatMessages} setMessages={setChatMessages} />}
     </div>
   );
 }
