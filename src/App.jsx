@@ -714,13 +714,13 @@ export default function App({ chatEnabled = false }) {
     <div style={{display:"flex", height:"100vh", overflow:"hidden", fontFamily:'"Lato", "Helvetica Neue", Helvetica, Arial, sans-serif'}}>
       <div style={{flex:1, minWidth:0, background:"#F5F5F5", display:"flex", flexDirection:"column", height:"100vh"}}>
         <div style={{background:"#2D3B45", padding:"12px 24px", borderBottom:"3px solid #0374B5", flexShrink:0}}>
-          <div style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
-            <button onClick={()=>setMode("menu")} style={{background:"transparent", color:"#8B959E", border:"1px solid #556572", padding:"6px 14px", borderRadius:4, fontSize:13, cursor:"pointer"}}>Exit Quiz</button>
-            <div style={{display:"flex", alignItems:"center", gap:16}}>
-              <div style={{textAlign:"right"}}>
-                <div style={{fontSize:12, color:"#8B959E"}}>{filter === "All" ? "All Sections" : filter}{shuffled ? " \u{1F500}" : ""}</div>
-                <div style={{fontSize:16, fontWeight:600, color:"#fff"}}>Question {currentIdx + 1} of {questions.length}</div>
-              </div>
+          <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", position:"relative"}}>
+            <button onClick={()=>setMode("menu")} style={{background:"transparent", color:"#8B959E", border:"1px solid #556572", padding:"6px 14px", borderRadius:4, fontSize:13, cursor:"pointer", zIndex:1}}>Exit Quiz</button>
+            <div style={{position:"absolute", left:0, right:0, textAlign:"center", pointerEvents:"none"}}>
+              <div style={{fontSize:12, color:"#8B959E"}}>{filter === "All" ? "All Sections" : filter}{shuffled ? " \u{1F500}" : ""}</div>
+              <div style={{fontSize:16, fontWeight:600, color:"#fff"}}>Question {currentIdx + 1} of {questions.length}</div>
+            </div>
+            <div style={{display:"flex", alignItems:"center", gap:16, zIndex:1}}>
               <div style={{fontSize:14, color:"#8B959E"}}>{score.correct}/{score.total} correct</div>
               {chatEnabled && !chatOpen && (
                 <button onClick={()=>setChatOpen(true)} style={{background:"#0374B5", color:"#fff", border:"none", padding:"6px 14px", borderRadius:4, fontSize:13, cursor:"pointer"}}>Tutor</button>
